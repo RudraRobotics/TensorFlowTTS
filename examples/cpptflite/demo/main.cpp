@@ -30,8 +30,8 @@ int main(int argc, char* argv[])
     proc.sampleRate = 24000;
 #endif
 
-    const char* melgenfile  = "../models/fastspeech2_quan.tflite";
-    const char* vocoderfile = "../models/mb_melgan.tflite";
+    const char* melgenfile  = "../models_ljspeech/fastspeech2_quan.tflite";
+    const char* vocoderfile = "../models_ljspeech/mb_melgan.tflite";
 
     // Init
     TTSFrontend ttsfrontend(proc.mapperJson, cmd);

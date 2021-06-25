@@ -16,6 +16,9 @@
 
 import logging
 import warnings
+import os
+import copy
+
 from collections import OrderedDict
 
 from tensorflow_tts.configs import (
@@ -40,6 +43,9 @@ from tensorflow_tts.inference.savable_models import (
     SavableTFFastSpeech2,
     SavableTFTacotron2
 )
+from tensorflow_tts.utils import CACHE_DIRECTORY, MODEL_FILE_NAME, LIBRARY_NAME
+from tensorflow_tts import __version__ as VERSION
+from huggingface_hub import hf_hub_url, cached_download
 
 
 TF_MODEL_MAPPING = OrderedDict(
@@ -62,15 +68,40 @@ class TFAutoModel(object):
         raise EnvironmentError("Cannot be instantiated using `__init__()`")
 
     @classmethod
-    def from_pretrained(cls, config, pretrained_path=None, **kwargs):
-        is_build = kwargs.pop("is_build", True)
+    def from_pretrained(cls, pretrained_path=None, config=None, **kwargs):
+        # load weights from hf hub
+        if pretrained_path is not None:
+            if not os.path.isfile(pretrained_path):
+                # retrieve correct hub url
+                download_url = hf_hub_url(repo_id=pretrained_path, filename=MODEL_FILE_NAME)
+
+                downloaded_file = str(
+                    cached_download(
+                        url=download_url,
+                        library_name=LIBRARY_NAME,
+                        library_version=VERSION,
+                        cache_dir=CACHE_DIRECTORY,
+                    )
+                )
+
+                # load config from repo as well
+                if config is None:
+                    from tensorflow_tts.inference import AutoConfig
+
+                    config = AutoConfig.from_pretrained(pretrained_path)
+
+                pretrained_path = downloaded_file
+
+
+        assert config is not None, "Please make sure to pass a config along to load a model from a local file"
+
         for config_class, model_class in TF_MODEL_MAPPING.items():
             if isinstance(config, config_class) and str(config_class.__name__) in str(
                 config
             ):
                 model = model_class(config=config, **kwargs)
-                if is_build:
-                    model._build()
+                model.set_config(config)
+                model._build()
                 if pretrained_path is not None and ".h5" in pretrained_path:
                     try:
                         model.load_weights(pretrained_path)
@@ -79,6 +110,7 @@ class TFAutoModel(object):
                             pretrained_path, by_name=True, skip_mismatch=True
                         )
                 return model
+
         raise ValueError(
             "Unrecognized configuration class {} for this kind of TFAutoModel: {}.\n"
             "Model type should be one of {}.".format(

@@ -16,6 +16,7 @@
 
 import logging
 import yaml
+import os
 from collections import OrderedDict
 
 from tensorflow_tts.configs import (
@@ -28,6 +29,10 @@ from tensorflow_tts.configs import (
     ParallelWaveGANGeneratorConfig,
 )
 
+from tensorflow_tts.utils import CACHE_DIRECTORY, CONFIG_FILE_NAME, LIBRARY_NAME
+from tensorflow_tts import __version__ as VERSION
+from huggingface_hub import hf_hub_url, cached_download
+
 CONFIG_MAPPING = OrderedDict(
     [
         ("fastspeech", FastSpeechConfig),
@@ -36,7 +41,7 @@ CONFIG_MAPPING = OrderedDict(
         ("melgan_generator", MelGANGeneratorConfig),
         ("hifigan_generator", HifiGANGeneratorConfig),
         ("tacotron2", Tacotron2Config),
-        ("parallel_wavegan_generator", ParallelWaveGANGeneratorConfig)
+        ("parallel_wavegan_generator", ParallelWaveGANGeneratorConfig),
     ]
 )
 
@@ -50,13 +55,30 @@ class AutoConfig:
 
     @classmethod
     def from_pretrained(cls, pretrained_path, **kwargs):
+        # load weights from hf hub
+        if not os.path.isfile(pretrained_path):
+            # retrieve correct hub url
+            download_url = hf_hub_url(
+                repo_id=pretrained_path, filename=CONFIG_FILE_NAME
+            )
+
+            pretrained_path = str(
+                cached_download(
+                    url=download_url,
+                    library_name=LIBRARY_NAME,
+                    library_version=VERSION,
+                    cache_dir=CACHE_DIRECTORY,
+                )
+            )
+
         with open(pretrained_path) as f:
-            config = yaml.load(f, Loader=yaml.SafeLoader)
+            config = yaml.load(f, Loader=yaml.Loader)
 
         try:
             model_type = config["model_type"]
             config_class = CONFIG_MAPPING[model_type]
             config_class = config_class(**config[model_type + "_params"], **kwargs)
+            config_class.set_config_params(config)
             return config_class
         except Exception:
             raise ValueError(
